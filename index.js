@@ -23,8 +23,11 @@ app.post('/webhook', async (req, res) => {
     const changes = entry?.changes?.[0];
     const message = changes?.value?.messages?.[0];
     if (message) {
-      const from = message.from;
-      const text = message.text?.body;
+let from = message.from;
+// Correccion formato Argentina: agregar 9 si es numero AR sin el 9
+if (from.startsWith('541') && from.length === 13) {
+  from = '549' + from.slice(3);
+}      const text = message.text?.body;
       await sendMessage(from, 'Recibimos tu mensaje: ' + text + '. Te respondemos enseguida.');
     }
   }
