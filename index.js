@@ -31,12 +31,8 @@ app.post('/webhook', async (req, res) => {
     if (message) {
       let from = message.from;
       console.log('Numero recibido:', from);
-      if (from.startsWith('541') && from.length === 13) {
-        from = '549' + from.slice(3);
-      }
-      console.log('Numero corregido:', from);
       const text = message.text?.body;
-      await sendMessage(from, 'Recibimos tu mensaje: ' + text + '. Te respondemos enseguida.');
+      await sendMessage(from, 'Recibimos tu mensaje: ' + text + '. Te respondemos eeeeenseguida.');
     }
   }
   res.sendStatus(200);
