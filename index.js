@@ -17,24 +17,31 @@ app.get('/webhook', (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
+  console.log('POST recibido');
+  console.log('Body:', JSON.stringify(req.body));
+  
   const body = req.body;
   if (body.object === 'whatsapp_business_account') {
     const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
     const message = changes?.value?.messages?.[0];
+    
+    console.log('Message:', JSON.stringify(message));
+    
     if (message) {
-let from = message.from;
-console.log('Numero recibido:', from);
-
-// Correccion formato Argentina: agregar 9 si es numero AR sin el 9
-if (from.startsWith('541') && from.length === 13) {
-  from = '549' + from.slice(3);
-}      const text = message.text?.body;
+      let from = message.from;
+      console.log('Numero recibido:', from);
+      if (from.startsWith('541') && from.length === 13) {
+        from = '549' + from.slice(3);
+      }
+      console.log('Numero corregido:', from);
+      const text = message.text?.body;
       await sendMessage(from, 'Recibimos tu mensaje: ' + text + '. Te respondemos enseguida.');
     }
   }
   res.sendStatus(200);
 });
+
 
 async function sendMessage(to, text) {
   try {
