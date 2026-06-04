@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: agente-whatsapp
+    runtime: node
+    buildCommand: npm install
+    startCommand: node index.js
