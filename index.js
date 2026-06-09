@@ -5,6 +5,9 @@ const app = express();
 
 app.use(express.json());
 
+// Memoria de conversaciones por número
+const conversaciones = {};
+
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -26,17 +29,36 @@ app.post('/webhook', async (req, res) => {
       const from = message.from;
       const text = message.text.body;
       console.log('Mensaje de ' + from + ': ' + text);
-      const respuesta = await preguntarGroq(from, text);
+
+      // Inicializar historial si no existe
+      if (!conversaciones[from]) {
+        conversaciones[from] = [];
+      }
+
+      // Agregar mensaje del cliente al historial
+      conversaciones[from].push({ role: 'user', content: text });
+
+      // Limitar historial a últimos 10 mensajes
+      if (conversaciones[from].length > 10) {
+        conversaciones[from] = conversaciones[from].slice(-10);
+      }
+
+      const respuesta = await preguntarGroq(from, conversaciones[from]);
+
+      // Agregar respuesta al historial
+      conversaciones[from].push({ role: 'assistant', content: respuesta.texto });
+
       await sendMessage(from, respuesta.texto);
+
       if (respuesta.tieneLeads) {
-        await notificarLead(from, text, respuesta.texto);
+        await notificarLead(from, conversaciones[from]);
       }
     }
   }
   res.sendStatus(200);
 });
 
-async function preguntarGroq(from, pregunta) {
+async function preguntarGroq(from, historial) {
   try {
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
@@ -53,7 +75,7 @@ SERVICIOS:
 - Consultoría especializada (ERP, cloud, procesos)
 - Desarrollo de software a medida
 - HARDIS SISLOG WMS (gestión de almacenes, logística)
-- Remito Digital (remito-digital.com) - solución de remitos electrónicos conforme a normativa ARCA/AFIP
+- Remito Digital (remito-digital.com) - remitos electrónicos conforme a ARCA/AFIP
 - Academia Valbará (cursos virtuales e in company de IT)
 
 CONTACTO:
@@ -66,20 +88,18 @@ PERSONALIDAD:
 - Consultivo, directo, analítico, orientado a resultados
 - Frases cortas, ideas ordenadas
 - Primero entendés el problema, después respondés
-- Conectás siempre tecnología con operación
-- No usás frases genéricas ni teoría vacía
+- Conectás tecnología con operación
+- Sin frases genéricas ni teoría vacía
 
-REGLAS:
+REGLAS IMPORTANTES:
 - Respondé siempre en español
-- Si consultan fuera del horario, indicá que un especialista los contactará al siguiente día hábil
-- Si la consulta requiere presupuesto o seguimiento, pedí nombre, empresa y email
+- Si la consulta requiere presupuesto o seguimiento comercial, pedí SOLO UNA VEZ: nombre, empresa y email. No vuelvas a pedirlos si ya los dio.
+- Si el cliente ya dio sus datos de contacto en mensajes anteriores, NO los vuelvas a pedir. En cambio agregá al final: [LEAD_DETECTADO]
+- Si detectás un email en cualquier mensaje del historial, agregá al final: [LEAD_DETECTADO]
 - Nunca inventes precios ni compromisos comerciales
-- Si el mensaje contiene nombre, empresa o email del cliente, agregá al FINAL de tu respuesta exactamente esta línea: [LEAD_DETECTADO]`
+- Si la consulta es muy técnica o compleja, decí que un especialista se va a contactar`
           },
-          {
-            role: 'user',
-            content: pregunta
-          }
+          ...historial
         ]
       },
       {
@@ -99,13 +119,17 @@ REGLAS:
   }
 }
 
-async function notificarLead(from, mensajeCliente, respuestaValba) {
+async function notificarLead(from, historial) {
+  const resumen = historial
+    .map(m => (m.role === 'user' ? 'Cliente: ' : 'VALBA: ') + m.content)
+    .join('\n');
+
   const notificacion = '🔔 Nuevo lead - VALBA\n' +
-    'Numero: +' + from + '\n' +
-    'Mensaje: ' + mensajeCliente + '\n' +
-    'Respuesta VALBA: ' + respuestaValba.substring(0, 200);
+    'Numero: +' + from + '\n\n' +
+    resumen.substring(0, 800);
+
   await sendMessage(process.env.NOTIFY_NUMBER, notificacion);
-  console.log('Lead notificado a ' + process.env.NOTIFY_NUMBER);
+  console.log('Lead notificado');
 }
 
 async function sendMessage(to, text) {
