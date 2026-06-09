@@ -26,14 +26,17 @@ app.post('/webhook', async (req, res) => {
       const from = message.from;
       const text = message.text.body;
       console.log('Mensaje de ' + from + ': ' + text);
-      const respuesta = await preguntarGroq(text);
-      await sendMessage(from, respuesta);
+      const respuesta = await preguntarGroq(from, text);
+      await sendMessage(from, respuesta.texto);
+      if (respuesta.tieneLeads) {
+        await notificarLead(from, text, respuesta.texto);
+      }
     }
   }
   res.sendStatus(200);
 });
 
-async function preguntarGroq(pregunta) {
+async function preguntarGroq(from, pregunta) {
   try {
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
@@ -65,13 +68,13 @@ PERSONALIDAD:
 - Primero entendés el problema, después respondés
 - Conectás siempre tecnología con operación
 - No usás frases genéricas ni teoría vacía
-- Si no podés resolver algo, derivás al equipo humano
 
 REGLAS:
 - Respondé siempre en español
-- Si consultan fuera del horario de atención, indicá que un especialista los contactará al siguiente día hábil
-- Si la consulta es compleja o requiere presupuesto, pedí nombre, empresa y email para que el equipo haga seguimiento
-- Nunca inventes precios ni compromisos comerciales`
+- Si consultan fuera del horario, indicá que un especialista los contactará al siguiente día hábil
+- Si la consulta requiere presupuesto o seguimiento, pedí nombre, empresa y email
+- Nunca inventes precios ni compromisos comerciales
+- Si el mensaje contiene nombre, empresa o email del cliente, agregá al FINAL de tu respuesta exactamente esta línea: [LEAD_DETECTADO]`
           },
           {
             role: 'user',
@@ -86,11 +89,23 @@ REGLAS:
         }
       }
     );
-    return response.data.choices[0].message.content;
+    const contenido = response.data.choices[0].message.content;
+    const tieneLeads = contenido.includes('[LEAD_DETECTADO]');
+    const texto = contenido.replace('[LEAD_DETECTADO]', '').trim();
+    return { texto, tieneLeads };
   } catch (err) {
     console.error('Error Groq:', err.response?.data);
-    return 'Disculpa, en este momento no puedo responder. Te contactamos a la brevedad.';
+    return { texto: 'Disculpa, en este momento no puedo responder. Te contactamos a la brevedad.', tieneLeads: false };
   }
+}
+
+async function notificarLead(from, mensajeCliente, respuestaValba) {
+  const notificacion = '🔔 Nuevo lead - VALBA\n' +
+    'Numero: +' + from + '\n' +
+    'Mensaje: ' + mensajeCliente + '\n' +
+    'Respuesta VALBA: ' + respuestaValba.substring(0, 200);
+  await sendMessage(process.env.NOTIFY_NUMBER, notificacion);
+  console.log('Lead notificado a ' + process.env.NOTIFY_NUMBER);
 }
 
 async function sendMessage(to, text) {
